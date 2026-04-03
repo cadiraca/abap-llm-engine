@@ -1,0 +1,5 @@
+*.bin
+*.safetensors
+__pycache__/
+*.pyc
+.env
