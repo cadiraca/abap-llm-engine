@@ -48,9 +48,52 @@ def main():
         print(f"Config: {config['num_hidden_layers']} layers, {config['hidden_size']} hidden, {config['vocab_size']} vocab")
         
         tensors = {}
-        with safe_open(model_path, framework="numpy") as f:
-            for key in f.keys():
-                tensors[key] = f.get_tensor(key)
+        # Try torch first (handles bfloat16 natively), fall back to numpy
+        try:
+            import torch
+            with safe_open(model_path, framework="pt") as f:
+                for key in f.keys():
+                    tensors[key] = f.get_tensor(key).to(torch.float32).numpy()
+            print("Loaded via PyTorch (bfloat16 handled natively)")
+        except ImportError:
+            # torch not available — load as numpy and manually convert bfloat16
+            print("PyTorch not available, using manual bfloat16→float32 conversion")
+            import struct as _struct
+            from safetensors import safe_open as _safe_open_raw
+            # Use numpy framework but handle bfloat16 by reading raw bytes
+            with open(model_path, 'rb') as raw_f:
+                raw_bytes = raw_f.read()
+            # Parse safetensors format manually for bfloat16 tensors
+            # Header: 8 bytes (uint64 header_size) + header_size bytes (JSON) + data
+            import json as _json
+            header_size = _struct.unpack_from('<Q', raw_bytes, 0)[0]
+            header_json = raw_bytes[8:8+header_size].decode('utf-8')
+            header = _json.loads(header_json)
+            data_offset = 8 + header_size
+
+            for key, meta in header.items():
+                if key == '__metadata__':
+                    continue
+                dtype_str = meta['dtype']
+                shape = meta['shape']
+                start, end = meta['data_offsets']
+                raw_tensor = raw_bytes[data_offset + start:data_offset + end]
+
+                if dtype_str == 'BF16':
+                    # Manual bfloat16 → float32: insert 2 zero bytes before each 2-byte bf16
+                    n = len(raw_tensor) // 2
+                    f32_arr = np.empty(n, dtype=np.float32)
+                    raw_view = np.frombuffer(raw_tensor, dtype=np.uint16)
+                    # Bfloat16 is the upper 16 bits of float32
+                    f32_arr.view(np.uint32)[:] = raw_view.astype(np.uint32) << 16
+                    tensors[key] = f32_arr.reshape(shape)
+                elif dtype_str == 'F32':
+                    tensors[key] = np.frombuffer(raw_tensor, dtype=np.float32).reshape(shape).copy()
+                elif dtype_str == 'F16':
+                    tensors[key] = np.frombuffer(raw_tensor, dtype=np.float16).astype(np.float32).reshape(shape).copy()
+                else:
+                    print(f"  Skipping unsupported dtype {dtype_str} for {key}")
+                    continue
         
         print(f"Loaded {len(tensors)} tensors")
         
