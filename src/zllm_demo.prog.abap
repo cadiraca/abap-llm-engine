@@ -14,9 +14,9 @@ REPORT zllm_demo.
 PARAMETERS:
   p_prompt TYPE string DEFAULT 'The capital of France is' LOWER CASE,
   p_maxtok TYPE i DEFAULT 20,
-  p_temp   TYPE f DEFAULT '0.7',
+  p_temp   TYPE p DECIMALS 2 DEFAULT '0.70',
   p_topk   TYPE i DEFAULT 40,
-  p_topp   TYPE f DEFAULT '0.9',
+  p_topp   TYPE p DECIMALS 2 DEFAULT '0.90',
   p_source TYPE string DEFAULT 'ZTAB' LOWER CASE,
   p_path   TYPE string DEFAULT 'ZLLM_WEIGHTS' LOWER CASE.
 
@@ -65,14 +65,16 @@ START-OF-SELECTION.
   DATA(lt_vocab) = VALUE zcl_llm_bpe_tokenizer=>ty_vocab( ).
   DATA(lt_merges) = VALUE zcl_llm_bpe_tokenizer=>ty_merge_pairs( ).
 
-  " Build basic ASCII + common token vocabulary
-  DATA(lv_char) = 0.
-  WHILE lv_char < 128.
-    DATA(lv_char_str) = cl_abap_conv_codepage=>create_out( )->convert(
-      source = VALUE xstring( ) ).
-    " Simplified: add space and printable ASCII as individual tokens
-    APPEND |{ CONV char1( lv_char ) }| TO lt_vocab.
-    lv_char = lv_char + 1.
+  " Build basic ASCII printable character vocabulary (space through tilde)
+  DATA lv_ascii_chars TYPE string.
+  lv_ascii_chars = ` !"#$%&'()*+,-./0123456789:;<=>?`
+    && `@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`
+    && '`abcdefghijklmnopqrstuvwxyz{|}~'.
+  DATA(lv_vlen) = strlen( lv_ascii_chars ).
+  DATA(lv_vi) = 0.
+  WHILE lv_vi < lv_vlen.
+    APPEND lv_ascii_chars+lv_vi(1) TO lt_vocab.
+    lv_vi = lv_vi + 1.
   ENDWHILE.
 
   " Add some common English tokens for better tokenization
@@ -108,9 +110,9 @@ START-OF-SELECTION.
   DATA(lv_result) = lo_engine->generate(
     iv_prompt      = p_prompt
     iv_max_tokens  = p_maxtok
-    iv_temperature = p_temp
+    iv_temperature = CONV f( p_temp )
     iv_top_k       = p_topk
-    iv_top_p       = p_topp ).
+    iv_top_p       = CONV f( p_topp ) ).
 
   DATA(lv_gen_time) = sy-uzeit - lv_start_time.
 

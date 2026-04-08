@@ -13,7 +13,7 @@ CLASS zcl_llm_transformer_block DEFINITION
       ty_shape     TYPE zif_llm_tensor=>ty_shape,
       ty_kv_cache  TYPE zcl_llm_attention=>ty_kv_cache.
 
-    "! Model configuration structure
+    " Model configuration structure
     TYPES:
       BEGIN OF ty_config,
         hidden_size       TYPE i,
@@ -128,10 +128,12 @@ CLASS zcl_llm_transformer_block IMPLEMENTATION.
       iv_eps    = ms_config-rms_norm_eps ).
 
     " Step 2: Attention
-    DATA(lo_attn_out) = mo_attention->forward(
-      io_x        = lo_normed
-      iv_position = iv_position
-      CHANGING ct_kv_cache = ct_kv_cache ).
+    DATA lo_attn_out TYPE REF TO zif_llm_tensor.
+    mo_attention->forward(
+      EXPORTING io_x        = lo_normed
+                iv_position = iv_position
+      CHANGING  ct_kv_cache = ct_kv_cache
+      RECEIVING ro_output   = lo_attn_out ).
 
     " Step 3: Residual connection after attention
     DATA(lo_residual) = io_x->add( lo_attn_out ).

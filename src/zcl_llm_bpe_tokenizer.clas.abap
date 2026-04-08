@@ -45,7 +45,6 @@ CLASS zcl_llm_bpe_tokenizer DEFINITION
       RETURNING VALUE(rv_text) TYPE string.
 
     "! <p class="shorttext synchronized">Get vocabulary size</p>
-    "! @parameter rv_size | Number of tokens in vocabulary
     METHODS get_vocab_size
       RETURNING VALUE(rv_size) TYPE i.
 
@@ -54,7 +53,7 @@ CLASS zcl_llm_bpe_tokenizer DEFINITION
       mt_vocab  TYPE ty_vocab,
       mt_merges TYPE ty_merge_pairs.
 
-    "! Reverse lookup: token string → token ID
+    " Reverse lookup: token string → token ID
     DATA:
       mt_token_to_id TYPE HASHED TABLE OF i WITH UNIQUE KEY table_line.
 
@@ -72,9 +71,6 @@ CLASS zcl_llm_bpe_tokenizer DEFINITION
       RETURNING VALUE(rv_id) TYPE i.
 
     "! Find the highest-priority merge that applies
-    "! @parameter it_tokens | Current token sequence
-    "! @parameter rv_merge_idx | Index of merge rule, 0 if none
-    "! @parameter rv_pos | Position in token sequence where merge applies
     METHODS find_best_merge
       IMPORTING it_tokens         TYPE ty_string_tab
       EXPORTING ev_merge_idx      TYPE i
@@ -169,12 +165,12 @@ CLASS zcl_llm_bpe_tokenizer IMPLEMENTATION.
     DATA(lv_best_priority) = 999999999.
 
     " Check all adjacent pairs against merge rules
-    DATA(lv_num_tokens) = lines( lt_tokens ).
+    DATA(lv_num_tokens) = lines( it_tokens ).
     DATA(lv_i) = 1.
 
     WHILE lv_i < lv_num_tokens.
-      DATA(lv_a) = lt_tokens[ lv_i ].
-      DATA(lv_b) = lt_tokens[ lv_i + 1 ].
+      DATA(lv_a) = it_tokens[ lv_i ].
+      DATA(lv_b) = it_tokens[ lv_i + 1 ].
 
       " Look up this pair in merge rules
       DATA(lv_m) = 1.

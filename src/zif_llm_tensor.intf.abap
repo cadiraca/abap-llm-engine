@@ -27,6 +27,26 @@ INTERFACE zif_llm_tensor
     get_data
       RETURNING VALUE(rt_data) TYPE ty_float_tab,
 
+    "! <p class="shorttext synchronized">Direct access to internal data (for performance)</p>
+    "! Use with care — breaks immutability.
+    "! @parameter rr_data | Reference to internal float table
+    get_data_ref
+      RETURNING VALUE(rr_data) TYPE REF TO ty_float_tab,
+
+    "! <p class="shorttext synchronized">Get a single element by flat index</p>
+    "! @parameter iv_index | 0-based flat index
+    "! @parameter rv_value | Float value
+    get_value
+      IMPORTING iv_index        TYPE i
+      RETURNING VALUE(rv_value) TYPE f,
+
+    "! <p class="shorttext synchronized">Set a single element by flat index</p>
+    "! @parameter iv_index | 0-based flat index
+    "! @parameter iv_value | Float value
+    set_value
+      IMPORTING iv_index TYPE i
+                iv_value TYPE f,
+
     "! <p class="shorttext synchronized">Matrix multiplication</p>
     "! Performs this @ other. For 2D tensors: (M,K) @ (K,N) = (M,N).
     "! Uses tiled algorithm for cache efficiency.

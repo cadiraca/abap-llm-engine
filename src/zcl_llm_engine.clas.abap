@@ -277,10 +277,11 @@ CLASS zcl_llm_engine IMPLEMENTATION.
         ASSERT 1 = 0.
       ENDIF.
 
-      lo_hidden = lo_block->forward(
-        io_x        = lo_hidden
-        iv_position = iv_position
-        CHANGING ct_kv_cache = <ls_kv_cache>-kv_cache ).
+      lo_block->forward(
+        EXPORTING io_x        = lo_hidden
+                  iv_position = iv_position
+        CHANGING  ct_kv_cache = <ls_kv_cache>-kv_cache
+        RECEIVING ro_output   = lo_hidden ).
 
       lv_layer = lv_layer + 1.
     ENDLOOP.
@@ -326,10 +327,12 @@ CLASS zcl_llm_engine IMPLEMENTATION.
       " to populate the KV cache
       DATA(lt_current) = VALUE zcl_llm_bpe_tokenizer=>ty_token_ids(
         ( lv_token_id ) ).
-      DATA(lo_logits) = forward_pass(
-        it_token_ids = lt_current
-        iv_position  = lv_pos
-        CHANGING ct_kv_caches = lt_kv_caches ).
+      DATA lo_logits TYPE REF TO zif_llm_tensor.
+      forward_pass(
+        EXPORTING it_token_ids = lt_current
+                  iv_position  = lv_pos
+        CHANGING  ct_kv_caches = lt_kv_caches
+        RECEIVING ro_logits    = lo_logits ).
       lv_pos = lv_pos + 1.
     ENDLOOP.
 
@@ -354,10 +357,11 @@ CLASS zcl_llm_engine IMPLEMENTATION.
       " Forward pass for the new token
       lt_current = VALUE zcl_llm_bpe_tokenizer=>ty_token_ids(
         ( lv_next_token ) ).
-      lo_logits = forward_pass(
-        it_token_ids = lt_current
-        iv_position  = lv_pos
-        CHANGING ct_kv_caches = lt_kv_caches ).
+      forward_pass(
+        EXPORTING it_token_ids = lt_current
+                  iv_position  = lv_pos
+        CHANGING  ct_kv_caches = lt_kv_caches
+        RECEIVING ro_logits    = lo_logits ).
 
       lv_pos = lv_pos + 1.
       lv_generated = lv_generated + 1.

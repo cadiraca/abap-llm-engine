@@ -63,9 +63,10 @@ CLASS lcl_uploader IMPLEMENTATION.
     DATA lv_chunk TYPE xstring.
 
     " ── Read file ────────────────────────────────────────────────────────────
-    OPEN DATASET iv_path FOR INPUT IN BINARY MODE.
+    DATA lv_msg TYPE string.
+    OPEN DATASET iv_path FOR INPUT IN BINARY MODE MESSAGE lv_msg.
     IF sy-subrc <> 0.
-      WRITE: / |ERROR: Cannot open { iv_path }. Check AL11 path and authorizations.|.
+      WRITE: / |ERROR: Cannot open { iv_path }: { lv_msg }|.
       RETURN.
     ENDIF.
     DO.
@@ -76,7 +77,8 @@ CLASS lcl_uploader IMPLEMENTATION.
     CLOSE DATASET iv_path.
 
     DATA(lv_total) = xstrlen( lv_xstr ).
-    WRITE: / |File size: { lv_total } bytes ({ lv_total / 1048576 DECIMALS 1 } MB)|.
+    DATA(lv_mb) = CONV decfloat34( lv_total ) / 1048576.
+    WRITE: / |File size: { lv_total } bytes ({ lv_mb } MB)|.
 
     " ── Verify magic "ALLM" ──────────────────────────────────────────────────
     IF lv_total < 16 OR lv_xstr(4) <> '414C4C4D'.

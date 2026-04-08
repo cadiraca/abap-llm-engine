@@ -133,7 +133,7 @@ CLASS zcl_llm_math IMPLEMENTATION.
     ENDLOOP.
 
     DATA(lv_mean_sq) = lv_sum_sq / lv_size.
-    DATA(lv_rms_inv) = CONV f( 1 / sqrt( lv_mean_sq + iv_eps ) ).
+    DATA(lv_rms_inv) = 1 / sqrt( lv_mean_sq + iv_eps ).
 
     " Normalize and scale by weight
     DATA(lt_result) = VALUE ty_float_tab( ).
@@ -157,6 +157,7 @@ CLASS zcl_llm_math IMPLEMENTATION.
     "   freq = 1 / (theta ^ (2i / head_dim))
     "   angle = position * freq
     "   (x0, x1) → (x0*cos - x1*sin, x0*sin + x1*cos)
+    " Use interface methods (get_value/set_value) for in-place update.
     "--------------------------------------------------------------------
     DATA: lv_freq  TYPE f,
           lv_angle TYPE f,
@@ -167,8 +168,6 @@ CLASS zcl_llm_math IMPLEMENTATION.
           lv_k0    TYPE f,
           lv_k1    TYPE f.
 
-    DATA(lo_q) = CAST zcl_llm_tensor( io_q ).
-    DATA(lo_k) = CAST zcl_llm_tensor( io_k ).
     DATA(lv_q_size) = io_q->get_size( ).
     DATA(lv_k_size) = io_k->get_size( ).
 
@@ -184,11 +183,11 @@ CLASS zcl_llm_math IMPLEMENTATION.
         lv_cos   = cos( lv_angle ).
         lv_sin   = sin( lv_angle ).
 
-        lv_q0 = lo_q->get_value( lv_base_q + lv_i ).
-        lv_q1 = lo_q->get_value( lv_base_q + lv_i + 1 ).
-        lo_q->set_value( iv_index = lv_base_q + lv_i
+        lv_q0 = io_q->get_value( lv_base_q + lv_i ).
+        lv_q1 = io_q->get_value( lv_base_q + lv_i + 1 ).
+        io_q->set_value( iv_index = lv_base_q + lv_i
                          iv_value = lv_q0 * lv_cos - lv_q1 * lv_sin ).
-        lo_q->set_value( iv_index = lv_base_q + lv_i + 1
+        io_q->set_value( iv_index = lv_base_q + lv_i + 1
                          iv_value = lv_q0 * lv_sin + lv_q1 * lv_cos ).
 
         lv_i = lv_i + 2.
@@ -208,11 +207,11 @@ CLASS zcl_llm_math IMPLEMENTATION.
         lv_cos   = cos( lv_angle ).
         lv_sin   = sin( lv_angle ).
 
-        lv_k0 = lo_k->get_value( lv_base_k + lv_i ).
-        lv_k1 = lo_k->get_value( lv_base_k + lv_i + 1 ).
-        lo_k->set_value( iv_index = lv_base_k + lv_i
+        lv_k0 = io_k->get_value( lv_base_k + lv_i ).
+        lv_k1 = io_k->get_value( lv_base_k + lv_i + 1 ).
+        io_k->set_value( iv_index = lv_base_k + lv_i
                          iv_value = lv_k0 * lv_cos - lv_k1 * lv_sin ).
-        lo_k->set_value( iv_index = lv_base_k + lv_i + 1
+        io_k->set_value( iv_index = lv_base_k + lv_i + 1
                          iv_value = lv_k0 * lv_sin + lv_k1 * lv_cos ).
 
         lv_i = lv_i + 2.

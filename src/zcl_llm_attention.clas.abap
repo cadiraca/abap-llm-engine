@@ -125,7 +125,7 @@ CLASS zcl_llm_attention IMPLEMENTATION.
 
     " Step 4: Compute attention for each query head
     DATA(lt_head_outputs) = VALUE ty_float_tab( ).
-    DATA(lv_scale) = CONV f( 1 / sqrt( CONV f( mv_head_dim ) ) ).
+    DATA(lv_scale) = 1 / sqrt( CONV f( mv_head_dim ) ).
 
     DATA(lv_h) = 0.
     WHILE lv_h < mv_num_heads.

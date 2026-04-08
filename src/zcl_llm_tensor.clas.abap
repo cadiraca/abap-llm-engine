@@ -36,26 +36,6 @@ CLASS zcl_llm_tensor DEFINITION
       IMPORTING it_shape         TYPE ty_shape
       RETURNING VALUE(ro_tensor) TYPE REF TO zif_llm_tensor.
 
-    "! <p class="shorttext synchronized">Direct access to internal data (for performance)</p>
-    "! Use with care — breaks immutability.
-    "! @parameter rt_data | Reference to internal float table
-    METHODS get_data_ref
-      RETURNING VALUE(rr_data) TYPE REF TO ty_float_tab.
-
-    "! <p class="shorttext synchronized">Set a single element by flat index</p>
-    "! @parameter iv_index | 0-based flat index
-    "! @parameter iv_value | Float value
-    METHODS set_value
-      IMPORTING iv_index TYPE i
-                iv_value TYPE f.
-
-    "! <p class="shorttext synchronized">Get a single element by flat index</p>
-    "! @parameter iv_index | 0-based flat index
-    "! @parameter rv_value | Float value
-    METHODS get_value
-      IMPORTING iv_index        TYPE i
-      RETURNING VALUE(rv_value) TYPE f.
-
   PROTECTED SECTION.
 
   PRIVATE SECTION.
@@ -90,16 +70,16 @@ CLASS zcl_llm_tensor IMPLEMENTATION.
     rt_data = mt_data.
   ENDMETHOD.
 
-  METHOD get_data_ref.
+  METHOD zif_llm_tensor~get_data_ref.
     GET REFERENCE OF mt_data INTO rr_data.
   ENDMETHOD.
 
-  METHOD set_value.
+  METHOD zif_llm_tensor~set_value.
     " iv_index is 0-based, internal table is 1-based
     mt_data[ iv_index + 1 ] = iv_value.
   ENDMETHOD.
 
-  METHOD get_value.
+  METHOD zif_llm_tensor~get_value.
     rv_value = mt_data[ iv_index + 1 ].
   ENDMETHOD.
 
@@ -179,9 +159,9 @@ CLASS zcl_llm_tensor IMPLEMENTATION.
     DATA(lo_result) = CAST zcl_llm_tensor( create_zeros( lt_result_shape ) ).
 
     " Get references for faster access
-    DATA(lr_data_a) = get_data_ref( ).
-    DATA(lr_data_b) = CAST zcl_llm_tensor( io_other )->get_data_ref( ).
-    DATA(lr_data_r) = lo_result->get_data_ref( ).
+    DATA(lr_data_a) = zif_llm_tensor~get_data_ref( ).
+    DATA(lr_data_b) = CAST zcl_llm_tensor( io_other )->zif_llm_tensor~get_data_ref( ).
+    DATA(lr_data_r) = lo_result->zif_llm_tensor~get_data_ref( ).
 
     " Tiled matrix multiplication for cache efficiency
     " Iterate over tiles

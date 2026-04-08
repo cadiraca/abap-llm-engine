@@ -79,9 +79,10 @@ CLASS lcl_vocab_uploader IMPLEMENTATION.
     DATA lv_line TYPE string.
     DATA lv_json TYPE string.
 
-    OPEN DATASET iv_path FOR INPUT IN TEXT MODE ENCODING DEFAULT.
+    DATA lv_msg TYPE string.
+    OPEN DATASET iv_path FOR INPUT IN TEXT MODE ENCODING DEFAULT MESSAGE lv_msg.
     IF sy-subrc <> 0.
-      WRITE: / |ERROR: Cannot open { iv_path }. Check AL11 path and authorizations.|.
+      WRITE: / |ERROR: Cannot open { iv_path }: { lv_msg }|.
       RETURN.
     ENDIF.
     DO.
@@ -285,7 +286,9 @@ CLASS lcl_vocab_uploader IMPLEMENTATION.
     DATA(lv_len) = strlen( iv_vocab_json ).
     IF lv_len < 2. RETURN. ENDIF.
 
-    DATA(lv_inner) = iv_vocab_json+1(lv_len - 2).
+    DATA(lv_offset) = 1.
+    DATA(lv_chars) = lv_len - 2.
+    DATA(lv_inner) = iv_vocab_json+lv_offset(lv_chars).
     DATA(lv_pos)   = 0.
     DATA(lv_inner_len) = strlen( lv_inner ).
 
@@ -395,7 +398,9 @@ CLASS lcl_vocab_uploader IMPLEMENTATION.
     DATA(lv_len) = strlen( iv_merges_json ).
     IF lv_len < 2. RETURN. ENDIF.
 
-    DATA(lv_inner) = iv_merges_json+1(lv_len - 2).
+    DATA(lv_off2) = 1.
+    DATA(lv_ch2) = lv_len - 2.
+    DATA(lv_inner) = iv_merges_json+lv_off2(lv_ch2).
     DATA(lv_pos)   = 0.
     DATA(lv_inner_len) = strlen( lv_inner ).
 

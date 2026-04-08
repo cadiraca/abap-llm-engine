@@ -71,10 +71,11 @@ CLASS zcl_llm_model_loader DEFINITION
       IMPORTING iv_shape         TYPE string
       RETURNING VALUE(rt_shape)  TYPE zif_llm_tensor=>ty_shape.
 
-    "! Apply all weights from the tensor map to the engine
+    " Apply all weights from the tensor map to the engine
+    TYPES: ty_tensor_ref TYPE REF TO zif_llm_tensor.
+    TYPES: ty_tensor_refs TYPE HASHED TABLE OF ty_tensor_ref WITH UNIQUE KEY table_line.
     METHODS apply_weights_to_engine
-      IMPORTING it_tensors TYPE HASHED TABLE OF REF TO zif_llm_tensor
-                           WITH UNIQUE KEY table_line.
+      IMPORTING it_tensors TYPE ty_tensor_refs.
 
     "! Read a little-endian uint32 from xstring at byte offset
     METHODS read_uint32
@@ -103,11 +104,8 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
     mo_engine = io_engine.
   ENDMETHOD.
 
-  "----------------------------------------------------------------------------
   METHOD load_from_ztable.
-  "----------------------------------------------------------------------------
-  " Read all weight rows for this model, dequantize and apply.
-  "----------------------------------------------------------------------------
+    " Read all weight rows for this model, dequantize and apply.
     DATA: lt_weights TYPE STANDARD TABLE OF zllm_weights WITH EMPTY KEY.
 
     SELECT * FROM zllm_weights
@@ -150,21 +148,15 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
         tensor     = lo_tensor ) TO lt_named.
     ENDLOOP.
 
-    " Apply tensor map to engine
-    DATA(lv_config) = mo_engine->get_config( ).
-    _apply_named_tensors(
-      it_named = lt_named
-      is_config = lv_config ).
+    " TODO: Apply tensor map to engine
+    " apply_weights_to_engine will be implemented when engine API is ready.
 
     MESSAGE |LLM Model Loader: { lines( lt_named ) } tensors loaded from ZLLM_WEIGHTS| TYPE 'I'.
   ENDMETHOD.
 
 
-  "----------------------------------------------------------------------------
   METHOD load_from_file.
-  "----------------------------------------------------------------------------
-  " Parse ALLM binary format from AL11 file path.
-  "----------------------------------------------------------------------------
+    " Parse ALLM binary format from AL11 file path.
     DATA: lv_file_length TYPE i,
           lt_file_data   TYPE STANDARD TABLE OF x1024 WITH EMPTY KEY,
           lv_xstr        TYPE xstring.
@@ -290,19 +282,14 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
       lv_tensor_idx = lv_tensor_idx + 1.
     ENDWHILE.
 
-    " Apply to engine
-    DATA(ls_config) = mo_engine->get_config( ).
-    _apply_named_tensors(
-      it_named  = lt_named
-      is_config = ls_config ).
+    " TODO: Apply to engine
+    " apply_weights_to_engine will be implemented when engine API is ready.
 
     MESSAGE |LLM Model Loader: { lines( lt_named ) } tensors loaded from { iv_file_path }| TYPE 'I'.
   ENDMETHOD.
 
 
-  "----------------------------------------------------------------------------
   METHOD load_vocab.
-  "----------------------------------------------------------------------------
     DATA: lt_vocab_rows  TYPE STANDARD TABLE OF zllm_vocab  WITH EMPTY KEY,
           lt_merge_rows  TYPE STANDARD TABLE OF zllm_merges WITH EMPTY KEY.
 
@@ -343,16 +330,10 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
   ENDMETHOD.
 
 
-  "----------------------------------------------------------------------------
-  "  Private helper methods
-  "----------------------------------------------------------------------------
-
   METHOD dequantize_int8.
-  "----------------------------------------------------------------------------
-  " Convert INT8 quantized weights back to float32.
-  " Layout: data = int8[rows, cols], scales = float32[rows]
-  " Result: float[rows, cols] where result[r,c] = int8[r,c] * scale[r]
-  "----------------------------------------------------------------------------
+    " Convert INT8 quantized weights back to float32.
+    " Layout: data = int8[rows, cols], scales = float32[rows]
+    " Result: float[rows, cols] where result[r,c] = int8[r,c] * scale[r]
     DATA(lv_total_elems) = iv_rows * iv_cols.
     DATA(lv_xlen)        = xstrlen( iv_data ).
     DATA(lv_slen)        = xstrlen( iv_scales ).
@@ -404,9 +385,7 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
 
 
   METHOD parse_shape.
-  "----------------------------------------------------------------------------
-  " Parse "[576,576]" or "[30,576]" into an integer table.
-  "----------------------------------------------------------------------------
+    " Parse "[576,576]" or "[30,576]" into an integer table.
     DATA(lv_str) = iv_shape.
     " Remove brackets
     REPLACE ALL OCCURRENCES OF '[' IN lv_str WITH ''.
@@ -424,19 +403,10 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD _apply_named_tensors.
-  "----------------------------------------------------------------------------
-  " Map HuggingFace tensor names to engine weight setters.
-  " Called after we have loaded all tensors into the lt_named table.
-  "----------------------------------------------------------------------------
-    " This method is declared inline (FORM-like private helper using METHOD
-    " with parameters defined in the private section).  In ABAP Cloud we use
-    " a standard METHOD with a local type.
-    " We define it as a local non-class method via a nested helper below.
-    " Since ABAP does not allow nested classes, we inline the logic here and
-    " call it from load_from_ztable / load_from_file via a shared helper method
-    " (see METHODS declaration in PRIVATE SECTION).
-    RETURN.  " Placeholder — real logic in overloaded version below.
+  METHOD apply_weights_to_engine.
+    " Map HuggingFace tensor names to engine weight setters.
+    " Placeholder — full implementation pending engine API.
+    RETURN.
   ENDMETHOD.
 
 
