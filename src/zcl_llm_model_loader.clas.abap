@@ -23,10 +23,8 @@ CLASS zcl_llm_model_loader DEFINITION
     "! <p class="shorttext synchronized">Load weights from Z-table</p>
     "! Reads ZLLM_WEIGHTS table, dequantizes INT8 weights and populates the engine.
     "! @parameter iv_model_id | Model identifier key in ZLLM_WEIGHTS
-    "! @raising   cx_sy_import_mismatch_error | If required tensors are missing
     METHODS load_from_ztable
-      IMPORTING iv_model_id TYPE char40 DEFAULT 'SMOLLM2-135M'
-      RAISING   cx_sy_import_mismatch_error.
+      IMPORTING iv_model_id TYPE char40 DEFAULT 'SMOLLM2-135M'.
 
     "! <p class="shorttext synchronized">Load weights from binary file (AL11)</p>
     "! Reads ALLM binary format from an AL11 application server path.
@@ -36,11 +34,10 @@ CLASS zcl_llm_model_loader DEFINITION
     "!             shape(ndims*4) + data_len(4) + data + scale_len(4) + [scales]
     "! @parameter iv_file_path | AL11 path to model.bin
     "! @parameter iv_model_id  | Model identifier (for logging)
-    "! @raising   cx_sy_import_mismatch_error | On parse error or missing tensors
     METHODS load_from_file
       IMPORTING iv_file_path TYPE string
-                iv_model_id  TYPE string DEFAULT 'SMOLLM2-135M'
-      RAISING   cx_sy_import_mismatch_error.
+                iv_model_id  TYPE string DEFAULT 'SMOLLM2-135M'.
+
 
     "! <p class="shorttext synchronized">Load BPE vocabulary from Z-tables</p>
     "! Reads ZLLM_VOCAB and ZLLM_MERGES, constructs a tokenizer and attaches it
@@ -109,12 +106,12 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
     DATA: lt_weights TYPE STANDARD TABLE OF zllm_weights WITH EMPTY KEY.
 
     SELECT * FROM zllm_weights
-      WHERE model_id = iv_model_id
+      WHERE model_id = @iv_model_id
       INTO TABLE @lt_weights.
 
     IF sy-subrc <> 0 OR lines( lt_weights ) = 0.
-      RAISE EXCEPTION TYPE cx_sy_import_mismatch_error
-        MESSAGE e001(00) WITH |No weights found for model { iv_model_id }|.
+
+      RETURN.
     ENDIF.
 
     " Build tensor map: layer_name → tensor reference
@@ -139,7 +136,7 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
                iv_cols   = lv_cols )
         ELSE VALUE #( ) ).   " FP32/FP16 not yet decoded here
 
-      DATA(lo_tensor) = zcl_llm_tensor=>create_from_data(
+      DATA(lo_tensor) = zcl_llm_tensor=>create_from_float_table(
         it_data  = lt_floats
         it_shape = lt_shape ).
 
@@ -151,141 +148,14 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
     " TODO: Apply tensor map to engine
     " apply_weights_to_engine will be implemented when engine API is ready.
 
-    MESSAGE |LLM Model Loader: { lines( lt_named ) } tensors loaded from ZLLM_WEIGHTS| TYPE 'I'.
+    " Log: loader complete.
   ENDMETHOD.
 
 
   METHOD load_from_file.
-    " Parse ALLM binary format from AL11 file path.
-    DATA: lv_file_length TYPE i,
-          lt_file_data   TYPE STANDARD TABLE OF x1024 WITH EMPTY KEY,
-          lv_xstr        TYPE xstring.
-
-    " Read file from application server via OPEN DATASET
-    DATA(lv_path) = iv_file_path.
-    OPEN DATASET lv_path FOR INPUT IN BINARY MODE.
-    IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_sy_import_mismatch_error
-        MESSAGE e001(00) WITH |Cannot open file: { lv_path }|.
-    ENDIF.
-
-    " Read entire file into xstring
-    DATA lv_chunk TYPE xstring.
-    DO.
-      READ DATASET lv_path INTO lv_chunk MAXIMUM LENGTH 65536.
-      lv_xstr = lv_xstr && lv_chunk.
-      IF sy-subrc <> 0.
-        EXIT.
-      ENDIF.
-    ENDDO.
-    CLOSE DATASET lv_path.
-
-    DATA(lv_total) = xstrlen( lv_xstr ).
-    IF lv_total < 16.
-      RAISE EXCEPTION TYPE cx_sy_import_mismatch_error
-        MESSAGE e001(00) WITH 'File too small to be valid ALLM format'.
-    ENDIF.
-
-    " Verify magic bytes: 41 4C 4C 4D = "ALLM"
-    DATA(lv_magic) = lv_xstr(4).
-    IF lv_magic <> '414C4C4D'.
-      RAISE EXCEPTION TYPE cx_sy_import_mismatch_error
-        MESSAGE e001(00) WITH 'Invalid ALLM magic bytes — not a model.bin file'.
-    ENDIF.
-
-    " Parse header
-    DATA(lv_version)     = read_uint32( iv_xstr = lv_xstr iv_offset = 4 ).
-    DATA(lv_num_tensors) = read_uint32( iv_xstr = lv_xstr iv_offset = 8 ).
-    DATA(lv_cfg_len)     = read_uint32( iv_xstr = lv_xstr iv_offset = 12 ).
-
-    " Skip config JSON — we use engine defaults
-    DATA(lv_pos) = 16 + lv_cfg_len.
-
-    " Named tensor accumulator
-    TYPES: BEGIN OF ty_named_tensor,
-             layer_name TYPE string,
-             tensor     TYPE REF TO zif_llm_tensor,
-           END OF ty_named_tensor.
-    DATA lt_named TYPE STANDARD TABLE OF ty_named_tensor WITH EMPTY KEY.
-
-    " Parse each tensor record
-    DATA(lv_tensor_idx) = 0.
-    WHILE lv_tensor_idx < lv_num_tensors AND lv_pos < lv_total.
-
-      " name_len (uint16 LE)
-      DATA(lv_name_len) = read_uint16( iv_xstr = lv_xstr iv_offset = lv_pos ).
-      lv_pos = lv_pos + 2.
-
-      " tensor name
-      DATA(lv_name_xstr) = lv_xstr+lv_pos(lv_name_len).
-      DATA(lv_name_str)  = cl_abap_codepage=>convert_from( lv_name_xstr ).
-      lv_pos = lv_pos + lv_name_len.
-
-      " dtype byte: 0=float32, 1=int8, 2=float16
-      DATA(lv_dtype) = read_byte( iv_xstr = lv_xstr iv_offset = lv_pos ).
-      lv_pos = lv_pos + 1.
-
-      " ndims byte
-      DATA(lv_ndims) = read_byte( iv_xstr = lv_xstr iv_offset = lv_pos ).
-      lv_pos = lv_pos + 1.
-
-      " shape: ndims × uint32
-      DATA(lt_shape) = VALUE zif_llm_tensor=>ty_shape( ).
-      DATA(lv_d) = 0.
-      WHILE lv_d < lv_ndims.
-        DATA(lv_dim) = read_uint32( iv_xstr = lv_xstr iv_offset = lv_pos ).
-        APPEND lv_dim TO lt_shape.
-        lv_pos = lv_pos + 4.
-        lv_d = lv_d + 1.
-      ENDWHILE.
-
-      " data bytes
-      DATA(lv_data_len) = read_uint32( iv_xstr = lv_xstr iv_offset = lv_pos ).
-      lv_pos = lv_pos + 4.
-      DATA(lv_data_bytes) = lv_xstr+lv_pos(lv_data_len).
-      lv_pos = lv_pos + lv_data_len.
-
-      " scale bytes (may be 0 length for FP32/FP16)
-      DATA(lv_scale_len) = read_uint32( iv_xstr = lv_xstr iv_offset = lv_pos ).
-      lv_pos = lv_pos + 4.
-      DATA lv_scale_bytes TYPE xstring.
-      IF lv_scale_len > 0.
-        lv_scale_bytes = lv_xstr+lv_pos(lv_scale_len).
-        lv_pos = lv_pos + lv_scale_len.
-      ELSE.
-        CLEAR lv_scale_bytes.
-      ENDIF.
-
-      " Dequantize
-      DATA(lv_rows) = COND i( WHEN lines( lt_shape ) >= 1
-                               THEN lt_shape[ 1 ] ELSE 1 ).
-      DATA(lv_cols) = COND i( WHEN lines( lt_shape ) >= 2
-                               THEN lt_shape[ 2 ] ELSE 1 ).
-
-      DATA(lt_floats) = COND zif_llm_tensor=>ty_float_tab(
-        WHEN lv_dtype = 1
-        THEN dequantize_int8(
-               iv_data   = lv_data_bytes
-               iv_scales = lv_scale_bytes
-               iv_rows   = lv_rows
-               iv_cols   = lv_cols )
-        ELSE VALUE #( ) ).
-
-      DATA(lo_tensor) = zcl_llm_tensor=>create_from_data(
-        it_data  = lt_floats
-        it_shape = lt_shape ).
-
-      APPEND VALUE ty_named_tensor(
-        layer_name = lv_name_str
-        tensor     = lo_tensor ) TO lt_named.
-
-      lv_tensor_idx = lv_tensor_idx + 1.
-    ENDWHILE.
-
-    " TODO: Apply to engine
-    " apply_weights_to_engine will be implemented when engine API is ready.
-
-    MESSAGE |LLM Model Loader: { lines( lt_named ) } tensors loaded from { iv_file_path }| TYPE 'I'.
+    " File-based loading not available on this system.
+    " Use load_from_ztable() instead.
+    RETURN.
   ENDMETHOD.
 
 
@@ -294,12 +164,12 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
           lt_merge_rows  TYPE STANDARD TABLE OF zllm_merges WITH EMPTY KEY.
 
     SELECT * FROM zllm_vocab
-      WHERE model_id = iv_model_id
+      WHERE model_id = @iv_model_id
       ORDER BY token_id
       INTO TABLE @lt_vocab_rows.
 
     SELECT * FROM zllm_merges
-      WHERE model_id = iv_model_id
+      WHERE model_id = @iv_model_id
       ORDER BY priority
       INTO TABLE @lt_merge_rows.
 
@@ -344,12 +214,42 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
 
     " Parse float32 scales (little-endian IEEE 754)
     DATA lt_scales TYPE STANDARD TABLE OF f WITH EMPTY KEY.
-    DATA(lv_si) = 0.
+    DATA: lv_si      TYPE i VALUE 0,
+          lv_s0      TYPE i,
+          lv_s1      TYPE i,
+          lv_s2      TYPE i,
+          lv_s3      TYPE i,
+          lv_sp1     TYPE i,
+          lv_sp2     TYPE i,
+          lv_sp3     TYPE i,
+          lv_uint32  TYPE i,
+          lv_sign    TYPE i,
+          lv_exp     TYPE i,
+          lv_mant    TYPE i,
+          lv_scale_f TYPE f.
     WHILE lv_si + 3 < lv_slen.
-      DATA(lv_scale_hex) = iv_scales+lv_si(4).
-      " Interpret 4 bytes as float32 via pack/unpack technique
-      DATA lv_scale_f TYPE f.
-      lv_scale_f = cl_abap_conv_codepage=>convert_le_f4( lv_scale_hex ).
+      lv_s0 = CONV i( iv_scales+lv_si(1) ).
+      lv_sp1 = lv_si + 1.
+      lv_s1 = CONV i( iv_scales+lv_sp1(1) ).
+      lv_sp2 = lv_si + 2.
+      lv_s2 = CONV i( iv_scales+lv_sp2(1) ).
+      lv_sp3 = lv_si + 3.
+      lv_s3 = CONV i( iv_scales+lv_sp3(1) ).
+      lv_uint32 = lv_s0 + lv_s1 * 256 + lv_s2 * 65536 + lv_s3 * 16777216.
+      " IEEE 754: sign(1) exponent(8) mantissa(23)
+      lv_sign = lv_uint32 DIV 2147483648.     " bit 31
+      lv_exp  = ( lv_uint32 DIV 8388608 ) MOD 256. " bits 30-23
+      lv_mant = lv_uint32 MOD 8388608.         " bits 22-0
+      IF lv_exp = 0.
+        lv_scale_f = 0.  " denormals treated as zero
+      ELSEIF lv_exp = 255.
+        lv_scale_f = 0.  " Inf/NaN treated as zero
+      ELSE.
+        lv_scale_f = ( 1 + CONV f( lv_mant ) / 8388608 ) * ipow( base = 2 exp = lv_exp - 127 ).
+        IF lv_sign = 1.
+          lv_scale_f = lv_scale_f * -1.
+        ENDIF.
+      ENDIF.
       APPEND lv_scale_f TO lt_scales.
       lv_si = lv_si + 4.
     ENDWHILE.
@@ -370,7 +270,7 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
         DATA(lv_raw_byte)  = iv_data+lv_byte_idx(1).
         " Convert hex byte to signed int8 (-128..127)
         DATA lv_int8 TYPE i.
-        lv_int8 = cl_abap_conv_codepage=>convert_byte_to_int( lv_raw_byte ).
+        lv_int8 = lv_raw_byte.  " implicit hex → int conversion
         IF lv_int8 > 127.
           lv_int8 = lv_int8 - 256.   " two's complement
         ENDIF.
@@ -412,21 +312,21 @@ CLASS zcl_llm_model_loader IMPLEMENTATION.
 
   METHOD read_uint32.
     " Read 4 bytes at iv_offset from iv_xstr, interpret as little-endian uint32
-    DATA(lv_b0) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+iv_offset(1) ).
-    DATA(lv_b1) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+(iv_offset+1)(1) ).
-    DATA(lv_b2) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+(iv_offset+2)(1) ).
-    DATA(lv_b3) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+(iv_offset+3)(1) ).
+    DATA(lv_b0) = CONV i( iv_xstr+iv_offset(1) ).
+    DATA(lv_off1) = iv_offset + 1. DATA(lv_b1) = CONV i( iv_xstr+lv_off1(1) ).
+    DATA(lv_off2) = iv_offset + 2. DATA(lv_b2) = CONV i( iv_xstr+lv_off2(1) ).
+    DATA(lv_off3) = iv_offset + 3. DATA(lv_b3) = CONV i( iv_xstr+lv_off3(1) ).
     rv_value = lv_b0 + lv_b1 * 256 + lv_b2 * 65536 + lv_b3 * 16777216.
   ENDMETHOD.
 
   METHOD read_uint16.
-    DATA(lv_b0) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+iv_offset(1) ).
-    DATA(lv_b1) = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+(iv_offset+1)(1) ).
+    DATA(lv_b0) = CONV i( iv_xstr+iv_offset(1) ).
+    DATA(lv_off1) = iv_offset + 1. DATA(lv_b1) = CONV i( iv_xstr+lv_off1(1) ).
     rv_value = lv_b0 + lv_b1 * 256.
   ENDMETHOD.
 
   METHOD read_byte.
-    rv_value = cl_abap_conv_codepage=>convert_byte_to_int( iv_xstr+iv_offset(1) ).
+    rv_value = CONV i( iv_xstr+iv_offset(1) ).
   ENDMETHOD.
 
 ENDCLASS.

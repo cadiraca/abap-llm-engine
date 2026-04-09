@@ -371,7 +371,11 @@ CLASS lcl_vocab_uploader IMPLEMENTATION.
       CLEAR ls_vocab.
       ls_vocab-model_id  = iv_model.
       ls_vocab-token_id  = lv_id.
-      ls_vocab-token     = lv_token(nmin( val1 = strlen( lv_token ) val2 = 200 )).
+      DATA(lv_tlen) = strlen( lv_token ).
+      IF lv_tlen > 200.
+        lv_tlen = 200.
+      ENDIF.
+      ls_vocab-token     = lv_token(lv_tlen).
       ls_vocab-score     = CONV decfloat34( lv_id ) * ( -1 ).  " GPT2-style score: -id
       APPEND ls_vocab TO lt_vocab.
 
@@ -451,8 +455,16 @@ CLASS lcl_vocab_uploader IMPLEMENTATION.
       CLEAR ls_merge.
       ls_merge-model_id   = iv_model.
       ls_merge-priority   = rv_count.  " 0-based insertion order = priority
-      ls_merge-pair_left  = lv_left(nmin( val1 = strlen( lv_left )  val2 = 100 )).
-      ls_merge-pair_right = lv_right(nmin( val1 = strlen( lv_right ) val2 = 100 )).
+      DATA(lv_llen) = strlen( lv_left ).
+      IF lv_llen > 100.
+        lv_llen = 100.
+      ENDIF.
+      DATA(lv_rlen) = strlen( lv_right ).
+      IF lv_rlen > 100.
+        lv_rlen = 100.
+      ENDIF.
+      ls_merge-pair_left  = lv_left(lv_llen).
+      ls_merge-pair_right = lv_right(lv_rlen).
       APPEND ls_merge TO lt_merges.
 
       rv_count = rv_count + 1.
